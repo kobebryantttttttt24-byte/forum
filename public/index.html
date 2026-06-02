@@ -16,6 +16,12 @@
         <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">注册</button>
       </div>
 
+      <!-- Login Mode Tabs -->
+      <div class="auth-login-tabs">
+        <button class="auth-login-tab active" id="codeTab" onclick="switchLoginMode('code')">验证码登录</button>
+        <button class="auth-login-tab" id="passwordTab" onclick="switchLoginMode('password')">密码登录</button>
+      </div>
+
       <!-- Phone Input (shared) -->
       <div id="phoneStep">
         <div class="auth-field">
@@ -25,17 +31,33 @@
             <button type="button" id="sendCodeBtn" class="send-code-btn" onclick="sendVerificationCode()">获取验证码</button>
           </div>
         </div>
+      </div>
+
+      <!-- Code Input (code mode) -->
+      <div id="codeInputGroup">
         <div class="auth-field">
           <label>验证码</label>
           <input type="text" id="authCode" placeholder="请输入6位验证码" maxlength="6" inputmode="numeric" pattern="[0-9]*">
         </div>
       </div>
 
-      <!-- Username (only for register) -->
+      <!-- Password Input (password mode) -->
+      <div id="passwordInputGroup" style="display:none">
+        <div class="auth-field">
+          <label>密码</label>
+          <input type="password" id="authPassword" placeholder="请输入密码" autocomplete="current-password">
+        </div>
+      </div>
+
+      <!-- Username + Password (only for register) -->
       <div id="usernameStep" style="display:none">
         <div class="auth-field">
           <label>设置用户名</label>
           <input type="text" id="authUsername" placeholder="起个名字（1-16个字符）" maxlength="16">
+        </div>
+        <div class="auth-field">
+          <label>设置密码（可选，设置后可使用密码登录）</label>
+          <input type="password" id="regPassword" placeholder="至少4位密码" minlength="4" autocomplete="new-password">
         </div>
       </div>
 

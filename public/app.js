@@ -27,6 +27,29 @@ let pendingPostVideo = null;
 let _currentPhone = '';
 let _isRegistered = false;
 let _codeTimer = null;
+let _loginMode = 'code'; // 'code' or 'password'
+
+function switchLoginMode(mode) {
+  _loginMode = mode;
+  document.getElementById('codeTab').classList.toggle('active', mode === 'code');
+  document.getElementById('passwordTab').classList.toggle('active', mode === 'password');
+  document.getElementById('codeInputGroup').style.display = mode === 'code' ? 'block' : 'none';
+  document.getElementById('passwordInputGroup').style.display = mode === 'password' ? 'block' : 'none';
+  document.getElementById('debugCode').style.display = 'none';
+  // Only show send code button in code mode
+  document.getElementById('sendCodeBtn').style.display = mode === 'code' ? 'inline-block' : 'none';
+  // Reset
+  document.getElementById('authError').textContent = '';
+  document.getElementById('usernameStep').style.display = 'none';
+  document.getElementById('authActionBtn').textContent = '登 录';
+  document.getElementById('authHint').textContent = '一个手机号只能绑定一个账号';
+  if (mode === 'code') {
+    document.getElementById('codeInputGroup').innerHTML = '<div class="auth-field"><label>验证码</label><input type="text" id="authCode" placeholder="请输入6位验证码" maxlength="6" inputmode="numeric" pattern="[0-9]*"></div>';
+  }
+  if (_codeTimer) { clearInterval(_codeTimer); _codeTimer = null; }
+  document.getElementById('sendCodeBtn').disabled = false;
+  document.getElementById('sendCodeBtn').textContent = '获取验证码';
+}
 
 async function sendVerificationCode() {
   const phone = document.getElementById('authPhone').value.trim();
@@ -90,39 +113,60 @@ async function sendVerificationCode() {
 
 async function handleAuth() {
   const phone = document.getElementById('authPhone').value.trim();
-  const code = document.getElementById('authCode').value.trim();
+  const code = document.getElementById('authCode') ? document.getElementById('authCode').value.trim() : '';
+  const password = document.getElementById('authPassword') ? document.getElementById('authPassword').value : '';
   const username = document.getElementById('authUsername').value.trim();
   const errorEl = document.getElementById('authError');
   const btn = document.getElementById('authActionBtn');
 
   if (!/^1\d{10}$/.test(phone)) { errorEl.textContent = '请输入正确的11位手机号。'; return; }
-  if (!code || code.length !== 6) { errorEl.textContent = '请输入6位验证码。'; return; }
-  if (!_isRegistered && (!username || username.length > 16)) { errorEl.textContent = '用户名需1-16个字符。'; return; }
+
+  if (_loginMode === 'code') {
+    if (!code || code.length !== 6) { errorEl.textContent = '请输入6位验证码。'; return; }
+    if (!_isRegistered && (!username || username.length > 16)) { errorEl.textContent = '用户名需1-16个字符。'; return; }
+  } else {
+    // Password mode
+    if (!password || password.length < 4) { errorEl.textContent = '密码至少4位。'; return; }
+  }
 
   btn.disabled = true;
   btn.textContent = '处理中...';
   errorEl.textContent = '';
 
   try {
-    if (_isRegistered) {
-      // Login
-      const res = await fetch(`${AUTH_API}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code })
-      });
-      const data = await res.json();
-      if (!res.ok) { errorEl.textContent = data.error; btn.disabled = false; btn.textContent = '登录'; return; }
-      onAuthSuccess(data.token, data.user);
+    if (_loginMode === 'code') {
+      if (_isRegistered) {
+        const res = await fetch(`${AUTH_API}/login`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, code })
+        });
+        const data = await res.json();
+        if (!res.ok) { errorEl.textContent = data.error; btn.disabled = false; btn.textContent = '登录'; return; }
+        onAuthSuccess(data.token, data.user);
+      } else {
+        // Register with optional password
+        const regPassword = document.getElementById('regPassword').value.trim();
+        const res = await fetch(`${AUTH_API}/register`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, code, username, password: regPassword || '' })
+        });
+        const data = await res.json();
+        if (!res.ok) { errorEl.textContent = data.error; btn.disabled = false; btn.textContent = '注册'; return; }
+        onAuthSuccess(data.token, data.user);
+      }
     } else {
-      // Register
-      const res = await fetch(`${AUTH_API}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code, username })
+      // Password login
+      const res = await fetch(`${AUTH_API}/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password })
       });
       const data = await res.json();
-      if (!res.ok) { errorEl.textContent = data.error; btn.disabled = false; btn.textContent = '注册'; return; }
+      if (res.status === 404) {
+        errorEl.textContent = '该手机号未注册，请先用验证码注册。';
+        btn.disabled = false; btn.textContent = '登录';
+        return;
+      }
+      if (!res.ok) { errorEl.textContent = data.error; btn.disabled = false; btn.textContent = '登录'; return; }
       onAuthSuccess(data.token, data.user);
     }
   } catch (err) {
@@ -187,16 +231,22 @@ function showAuth() {
   if (forumApp) forumApp.style.display = 'none';
   // Clear forms
   _currentPhone = '';
+  _loginMode = 'code';
   document.getElementById('authPhone').value = '';
-  document.getElementById('authCode').value = '';
   document.getElementById('authUsername').value = '';
   document.getElementById('authError').textContent = '';
   document.getElementById('debugCode').style.display = 'none';
   document.getElementById('usernameStep').style.display = 'none';
   document.getElementById('authActionBtn').textContent = '登录';
+  document.getElementById('sendCodeBtn').style.display = 'inline-block';
   document.getElementById('sendCodeBtn').disabled = false;
   document.getElementById('sendCodeBtn').textContent = '获取验证码';
   document.getElementById('authHint').textContent = '一个手机号只能绑定一个账号';
+  document.getElementById('codeInputGroup').style.display = 'block';
+  document.getElementById('passwordInputGroup').style.display = 'none';
+  document.getElementById('codeInputGroup').innerHTML = '<div class="auth-field"><label>验证码</label><input type="text" id="authCode" placeholder="请输入6位验证码" maxlength="6" inputmode="numeric" pattern="[0-9]*"></div>';
+  document.getElementById('codeTab').classList.add('active');
+  document.getElementById('passwordTab').classList.remove('active');
   if (_codeTimer) { clearInterval(_codeTimer); _codeTimer = null; }
 }
 

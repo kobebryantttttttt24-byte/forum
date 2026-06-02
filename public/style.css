@@ -1002,3 +1002,34 @@ video.preview-thumb {
   border: 1px solid #e2e5ea;
   background: #000;
 }
+
+/* Login mode tabs */
+.auth-login-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.2rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1.5px solid #e2e5ea;
+}
+
+.auth-login-tab {
+  flex: 1;
+  padding: 0.55rem 0.3rem;
+  background: #f8f9fb;
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #5e6870;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.auth-login-tab.active {
+  background: #1a1a2e;
+  color: #fff;
+}
+
+.auth-login-tab:not(.active):hover {
+  background: #ecedf0;
+}
