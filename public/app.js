@@ -35,7 +35,7 @@ function switchLoginMode(mode) {
   document.getElementById('passwordTab').classList.toggle('active', mode === 'password');
   document.getElementById('codeInputGroup').style.display = mode === 'code' ? 'block' : 'none';
   document.getElementById('passwordInputGroup').style.display = mode === 'password' ? 'block' : 'none';
-  document.getElementById('debugCode').style.display = 'none';
+  
   // Only show send code button in code mode
   document.getElementById('sendCodeBtn').style.display = mode === 'code' ? 'inline-block' : 'none';
   // Reset
@@ -72,20 +72,10 @@ async function sendVerificationCode() {
     const data = await res.json();
     if (!res.ok) { errorEl.textContent = data.error; btn.disabled = false; btn.textContent = '获取验证码'; return; }
 
-    // Show debug code (demo mode)
-    if (data._debug) {
-      const debugEl = document.getElementById('debugCode');
-      debugEl.textContent = '💡 验证码: ' + data._debug + '（测试模式）';
-      debugEl.style.display = 'block';
-    }
-
     // Check if phone is registered
-    const checkRes = await fetch(`${AUTH_API}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, code: data._debug || '' })
-    });
-    _isRegistered = checkRes.status !== 404;
+    const checkRes = await fetch(`${AUTH_API}/check-phone?phone=${encodeURIComponent(phone)}`);
+    const checkData = await checkRes.json();
+    _isRegistered = checkData.registered;
     document.getElementById('usernameStep').style.display = _isRegistered ? 'none' : 'block';
     document.getElementById('authActionBtn').textContent = _isRegistered ? '登 录' : '注 册';
     document.getElementById('authHint').textContent = _isRegistered ? '该手机号已注册，输入验证码登录。' : '新用户，设置用户名后注册。';
@@ -235,7 +225,7 @@ function showAuth() {
   document.getElementById('authPhone').value = '';
   document.getElementById('authUsername').value = '';
   document.getElementById('authError').textContent = '';
-  document.getElementById('debugCode').style.display = 'none';
+  
   document.getElementById('usernameStep').style.display = 'none';
   document.getElementById('authActionBtn').textContent = '登录';
   document.getElementById('sendCodeBtn').style.display = 'inline-block';

@@ -8,6 +8,7 @@ const POSTS_FILE = path.join(__dirname, 'posts.json');
 const USERS_FILE = path.join(__dirname, 'users.json');
 const SESSIONS_FILE = path.join(__dirname, 'sessions.json');
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+const { sendSMS } = require('./lib/sms');
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -154,13 +155,23 @@ const server = http.createServer(async (req, res) => {
 
       const code = String(Math.floor(100000 + Math.random() * 900000));
       verificationCodes[phone] = { code, expiresAt: Date.now() + 300000 };
-      console.log(`[SMS] Verification code for ${phone}: ${code}`);
 
-      // For demo: include code in response so user can see it
-      return jsonResponse(res, 200, { success: true, message: '验证码已发送', _debug: code });
+      // Send SMS via configured provider
+      await sendSMS(phone, code);
+
+      return jsonResponse(res, 200, { success: true, message: '验证码已发送到您的手机' });
     } catch (e) {
       return jsonResponse(res, 400, { error: '请求格式错误。' });
     }
+  }
+
+  // GET /api/auth/check-phone - check if phone is registered
+  if (req.method === 'GET' && pathname === '/api/auth/check-phone') {
+    const phone = (url.searchParams.get('phone') || '').trim();
+    if (!validatePhone(phone))
+      return jsonResponse(res, 400, { error: '请输入正确的手机号。' });
+    const users = loadUsers();
+    return jsonResponse(res, 200, { registered: !!users.find(u => u.phone === phone) });
   }
 
   // POST /api/auth/register - register with phone + code + username + optional password
