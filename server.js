@@ -11,6 +11,15 @@ const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+// In-memory verification codes (phone -> { code, expiresAt })
+const verificationCodes = {};
+setInterval(() => {
+  const now = Date.now();
+  for (const phone of Object.keys(verificationCodes)) {
+    if (verificationCodes[phone].expiresAt < now) delete verificationCodes[phone];
+  }
+}, 30000);
+
 // ---- Data helpers ----
 
 function loadJSON(file) {
@@ -130,35 +139,56 @@ const server = http.createServer(async (req, res) => {
 
   // ======== AUTH ENDPOINTS ========
 
-  // POST /api/auth/register
+  // POST /api/auth/send-code - send verification code
+  if (req.method === 'POST' && pathname === '/api/auth/send-code') {
+    try {
+      const body = await readBody(req);
+      const phone = (body.phone || '').trim();
+      if (!validatePhone(phone))
+        return jsonResponse(res, 400, { error: '请输入正确的11位手机号。' });
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      verificationCodes[phone] = { code, expiresAt: Date.now() + 300000 };
+      console.log(`[SMS] Verification code for ${phone}: ${code}`);
+
+      // For demo: include code in response so user can see it
+      return jsonResponse(res, 200, { success: true, message: '验证码已发送', _debug: code });
+    } catch (e) {
+      return jsonResponse(res, 400, { error: '请求格式错误。' });
+    }
+  }
+
+  // POST /api/auth/register - register with phone + code + username
   if (req.method === 'POST' && pathname === '/api/auth/register') {
     try {
       const body = await readBody(req);
       const phone = (body.phone || '').trim();
+      const code = (body.code || '').trim();
       const username = (body.username || '').trim();
-      const password = body.password || '';
 
       if (!validatePhone(phone))
-        return jsonResponse(res, 400, { error: '请输入正确的手机号（11位）。' });
+        return jsonResponse(res, 400, { error: '请输入正确的11位手机号。' });
       if (!username || username.length < 1 || username.length > 16)
         return jsonResponse(res, 400, { error: '用户名需1-16个字符。' });
-      if (password.length < 4)
-        return jsonResponse(res, 400, { error: '密码至少4位。' });
+
+      const saved = verificationCodes[phone];
+      if (!saved) return jsonResponse(res, 400, { error: '请先获取验证码。' });
+      if (saved.expiresAt < Date.now()) {
+        delete verificationCodes[phone];
+        return jsonResponse(res, 400, { error: '验证码已过期，请重新获取。' });
+      }
+      if (saved.code !== code)
+        return jsonResponse(res, 400, { error: '验证码错误。' });
+      delete verificationCodes[phone];
 
       const users = loadUsers();
       if (users.find(u => u.phone === phone))
-        return jsonResponse(res, 400, { error: '该手机号已注册，请登录。' });
+        return jsonResponse(res, 400, { error: '该手机号已注册。' });
 
-      const newUser = {
-        phone,
-        username,
-        passwordHash: hashPassword(password),
-        createdAt: new Date().toISOString()
-      };
+      const newUser = { phone, username, createdAt: new Date().toISOString() };
       users.push(newUser);
       saveUsers(users);
 
-      // Auto-login: create session
       const token = generateToken();
       const sessions = loadSessions();
       sessions[token] = { phone, createdAt: new Date().toISOString() };
@@ -170,22 +200,30 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // POST /api/auth/login
+  // POST /api/auth/login - login with phone + verification code
   if (req.method === 'POST' && pathname === '/api/auth/login') {
     try {
       const body = await readBody(req);
       const phone = (body.phone || '').trim();
-      const password = body.password || '';
+      const code = (body.code || '').trim();
 
       if (!validatePhone(phone))
         return jsonResponse(res, 400, { error: '请输入正确的手机号。' });
-      if (!password)
-        return jsonResponse(res, 400, { error: '请输入密码。' });
+
+      const saved = verificationCodes[phone];
+      if (!saved) return jsonResponse(res, 400, { error: '请先获取验证码。' });
+      if (saved.expiresAt < Date.now()) {
+        delete verificationCodes[phone];
+        return jsonResponse(res, 400, { error: '验证码已过期，请重新获取。' });
+      }
+      if (saved.code !== code)
+        return jsonResponse(res, 400, { error: '验证码错误。' });
+      delete verificationCodes[phone];
 
       const users = loadUsers();
-      const user = users.find(u => u.phone === phone && u.passwordHash === hashPassword(password));
+      const user = users.find(u => u.phone === phone);
       if (!user)
-        return jsonResponse(res, 401, { error: '手机号或密码错误。' });
+        return jsonResponse(res, 404, { error: '该手机号未注册，请先注册。' });
 
       const token = generateToken();
       const sessions = loadSessions();

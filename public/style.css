@@ -659,35 +659,7 @@ body {
   letter-spacing: 0.02em;
 }
 
-.auth-tabs {
-  display: flex;
-  gap: 0;
-  margin-bottom: 1.5rem;
-  border-bottom: 2px solid #f0f1f3;
-}
 
-.auth-tab {
-  flex: 1;
-  padding: 0.6rem 0;
-  background: none;
-  border: none;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: #b0b8c1;
-  cursor: pointer;
-  transition: color 0.2s;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-}
-
-.auth-tab.active {
-  color: #1a1a2e;
-  border-bottom-color: #1a1a2e;
-}
-
-.auth-form.hidden {
-  display: none;
-}
 
 .auth-field {
   margin-bottom: 1rem;
@@ -930,4 +902,60 @@ body {
   font-size: 0.75rem;
   color: #b0b8c1;
   margin-top: 0.15rem;
+}
+
+
+/* Verification code auth */
+.auth-subtitle {
+  text-align: center;
+  font-size: 0.9rem;
+  color: #5e6870;
+  margin-bottom: 1.5rem;
+}
+
+.phone-code-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.phone-code-row input {
+  flex: 1;
+}
+
+.send-code-btn {
+  white-space: nowrap;
+  padding: 0.65rem 0.8rem;
+  background: #f0f2f5;
+  border: 1.5px solid #e2e5ea;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #1a1a2e;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 96px;
+}
+
+.send-code-btn:hover:not(:disabled) {
+  background: #e2e5ea;
+  border-color: #d0d5da;
+}
+
+.send-code-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.auth-buttons {
+  margin-top: 1rem;
+}
+
+.debug-code {
+  text-align: center;
+  font-size: 0.82rem;
+  color: #b0b8c1;
+  margin-top: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  background: #f8f9fb;
+  border-radius: 6px;
 }
