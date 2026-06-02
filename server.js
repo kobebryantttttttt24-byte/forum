@@ -239,41 +239,37 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // POST /api/auth/login - login with phone + code OR phone + password
+  // POST /api/auth/login - unified login/register (phone + password, username for new users)
   if (req.method === 'POST' && pathname === '/api/auth/login') {
     try {
       const body = await readBody(req);
       const phone = (body.phone || '').trim();
-      const vcode = (body.code || '').trim();
       const password = body.password || '';
+      const username = (body.username || '').trim();
 
       if (!validatePhone(phone))
-        return jsonResponse(res, 400, { error: '请输入正确的手机号。' });
+        return jsonResponse(res, 400, { error: '请输入正确的11位手机号。' });
+      if (!password || password.length < 4)
+        return jsonResponse(res, 400, { error: '密码至少4位。' });
 
       const users = loadUsers();
-      const user = users.find(u => u.phone === phone);
-      if (!user)
-        return jsonResponse(res, 404, { error: '该手机号未注册，请先注册。' });
+      let user = users.find(u => u.phone === phone);
 
-      if (vcode) {
-        // Login with verification code
-        const saved = verificationCodes[phone];
-        if (!saved) return jsonResponse(res, 400, { error: '请先获取验证码。' });
-        if (saved.expiresAt < Date.now()) {
-          delete verificationCodes[phone];
-          return jsonResponse(res, 400, { error: '验证码已过期，请重新获取。' });
-        }
-        if (saved.code !== vcode)
-          return jsonResponse(res, 400, { error: '验证码错误。' });
-        delete verificationCodes[phone];
-      } else if (password) {
-        // Login with password
-        if (!user.passwordHash)
-          return jsonResponse(res, 400, { error: '该账号未设置密码，请用验证码登录。' });
-        if (user.passwordHash !== hashPassword(password))
+      if (user) {
+        // Existing user - verify password
+        if (!user.passwordHash || user.passwordHash !== hashPassword(password))
           return jsonResponse(res, 401, { error: '密码错误。' });
       } else {
-        return jsonResponse(res, 400, { error: '请输入验证码或密码。' });
+        // New user - create account
+        if (!username)
+          return jsonResponse(res, 400, { error: '新用户请填写昵称。' });
+        user = {
+          phone, username,
+          passwordHash: hashPassword(password),
+          createdAt: new Date().toISOString()
+        };
+        users.push(user);
+        saveUsers(users);
       }
 
       const token = generateToken();
@@ -325,7 +321,7 @@ const server = http.createServer(async (req, res) => {
 
     return jsonResponse(res, 200, {
       phone: user.phone,
-      username: user.username,
+      username: (body.name || "").trim() || "匿名",
       createdAt: user.createdAt,
       stats: {
         postCount: userPosts.length,
@@ -340,8 +336,6 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/posts (optional ?category= filter)
   if (req.method === 'GET' && pathname === '/api/posts') {
-    const user = authRequired(req, res);
-    if (!user) return;
     let posts = loadPosts();
     const cat = url.searchParams.get('category');
     if (cat) posts = posts.filter(p => p.category === cat);
@@ -351,8 +345,6 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/posts - create new post (name comes from auth)
   if (req.method === 'POST' && pathname === '/api/posts') {
-    const user = authRequired(req, res);
-    if (!user) return;
     try {
       const body = await readBody(req);
       const content = (body.content || '').trim();
@@ -361,7 +353,7 @@ const server = http.createServer(async (req, res) => {
       const posts = loadPosts();
       const newPost = {
         id: generateId(),
-        name: user.username,
+        name: (body.name || "").trim() || "匿名",
         phone: user.phone,
         content,
         category: body.category || '',
@@ -381,8 +373,6 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/posts/:id/reply
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply$/)) {
-    const user = authRequired(req, res);
-    if (!user) return;
     const postId = pathname.split('/')[3];
     try {
       const body = await readBody(req);
@@ -396,7 +386,7 @@ const server = http.createServer(async (req, res) => {
       if (!post.replies) post.replies = [];
       const reply = {
         id: generateId(),
-        name: user.username,
+        name: (body.name || "").trim() || "匿名",
         phone: user.phone,
         content,
         image: saveImage(body.image),
@@ -415,8 +405,6 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/posts/:id/like
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/like$/)) {
-    const user = authRequired(req, res);
-    if (!user) return;
     const postId = pathname.split('/')[3];
     const posts = loadPosts();
     const post = posts.find(p => p.id === postId);
@@ -428,8 +416,6 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/posts/:id/unlike
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/unlike$/)) {
-    const user = authRequired(req, res);
-    if (!user) return;
     const postId = pathname.split('/')[3];
     const posts = loadPosts();
     const post = posts.find(p => p.id === postId);
@@ -441,8 +427,6 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/posts/:id/reply/:replyId/like
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply\/[^/]+\/like$/)) {
-    const user = authRequired(req, res);
-    if (!user) return;
     const parts = pathname.split('/');
     const postId = parts[3], replyId = parts[5];
     const posts = loadPosts();
@@ -457,8 +441,6 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/posts/:id/reply/:replyId/unlike
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply\/[^/]+\/unlike$/)) {
-    const user = authRequired(req, res);
-    if (!user) return;
     const parts = pathname.split('/');
     const postId = parts[3], replyId = parts[5];
     const posts = loadPosts();
@@ -473,8 +455,6 @@ const server = http.createServer(async (req, res) => {
 
   // DELETE /api/posts/:id
   if (req.method === 'DELETE' && pathname.startsWith('/api/posts/')) {
-    const user = authRequired(req, res);
-    if (!user) return;
     const id = pathname.slice('/api/posts/'.length);
     const posts = loadPosts();
     const index = posts.findIndex(p => p.id === id);

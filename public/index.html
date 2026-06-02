@@ -7,63 +7,16 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <!-- Auth Screen -->
-    <div id="authScreen" class="auth-screen">
-    <div class="auth-card">
-      <div class="auth-logo">郭子论坛</div>
-
-      <div class="auth-login-tabs">
-        <button class="auth-login-tab active" id="tabCode" onclick="setAuthMode('code')">验证码登录</button>
-        <button class="auth-login-tab" id="tabPwd" onclick="setAuthMode('password')">密码登录</button>
-      </div>
-
-      <div class="auth-field">
-        <input  type="tel" id="loginPhone" placeholder="手机号" maxlength="11">
-      </div>
-
-      <div id="codeSection">
-        <div class="auth-field phone-code-row">
-          <input id="codeInput" type="text" id="loginCode" placeholder="验证码" maxlength="6">
-          <button class="send-code-btn" id="sendCodeBtn" onclick="doSendCode()">获取验证码</button>
-        </div>
-      </div>
-
-      <div id="pwdSection" style="display:none">
-        <div class="auth-field">
-          <input  type="password" id="loginPassword" placeholder="密码">
-        </div>
-      </div>
-
-      <div id="regSection" style="display:none">
-        <div class="auth-field">
-          <input  type="text" id="regName" placeholder="设置昵称">
-        </div>
-        <div class="auth-field">
-          <input  type="password" id="regPwd" placeholder="设置密码（可选）">
-        </div>
-      </div>
-
-      <div class="auth-error" id="authError"></div>
-
-      <button class="auth-submit" id="authBtn" onclick="doAuth()">登  录</button>
-
-      <p class="auth-hint" id="authHint">一个手机号只能绑定一个账号</p>
-    </div>
-  </div>
-<!-- Forum -->
-  <div id="forumApp" style="display:none">
+  <div id="forumApp">
     <header class="site-header">
       <div class="header-inner">
         <div class="header-top">
           <h1 class="site-title">郭子论坛</h1>
-          <div class="header-user" id="headerUser">
-            <span class="header-username" id="headerUsername"></span>
-            <button class="logout-btn" onclick="handleLogout()">退出</button>
-          </div>
         </div>
         <p class="site-desc">一个自由的交流空间</p>
       </div>
     </header>
+
     <div class="category-bar" id="categoryBar"></div>
 
     <main class="container">
@@ -72,9 +25,17 @@
           <h2 class="section-title">开新帖</h2>
           <form id="postForm">
             <div class="form-row">
+              <input type="text" id="postName" placeholder="你的名字" maxlength="30" required>
+            </div>
+            <div class="form-row">
               <textarea id="postContent" placeholder="说点什么..." rows="4" maxlength="5000" required></textarea>
             </div>
             <div class="form-row" id="postImageUploadRow"></div>
+            <div class="form-row">
+              <div class="category-picker">
+                <div class="cp-options" id="categoryPicker"></div>
+              </div>
+            </div>
             <div class="form-row form-actions">
               <button type="submit" id="submitBtn">发 布</button>
               <span id="charCount" class="char-count">0 / 5000</span>
@@ -94,22 +55,16 @@
       </section>
     </main>
 
-    <footer class="site-footer">
-      <p>郭子论坛</p>
-    </footer>
+    <footer class="site-footer"><p>郭子论坛</p></footer>
   </div>
 
-  <script src="/app.js"></script>
-
-  <!-- Profile Modal -->
   <div id="profileModal" class="profile-overlay" style="display:none" onclick="closeProfile(event)">
     <div class="profile-card" onclick="event.stopPropagation()">
       <button class="profile-close" onclick="closeProfile()">✕</button>
-      <div id="profileContent">
-        <div class="profile-loading">加载中...</div>
-      </div>
+      <div id="profileContent"><div class="profile-loading">加载中...</div></div>
     </div>
   </div>
 
+  <script src="/app.js"></script>
 </body>
 </html>
