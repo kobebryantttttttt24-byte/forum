@@ -3,3 +3,7 @@ node_modules/
 *.log
 posts.json
 .DS_Store
+
+# Uploaded images
+public/uploads/*
+!public/uploads/.gitkeep

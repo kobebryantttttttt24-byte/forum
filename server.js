@@ -4,6 +4,10 @@ const path = require('path');
 
 const PORT = process.env.PORT || 4000;
 const POSTS_FILE = path.join(__dirname, 'posts.json');
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+
+// Ensure uploads directory exists
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 function loadPosts() {
   try {
@@ -24,6 +28,18 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+function saveImage(imageDataUrl) {
+  if (!imageDataUrl || typeof imageDataUrl !== 'string') return null;
+  const match = imageDataUrl.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
+  if (!match) return null;
+  const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length > 5 * 1024 * 1024) return null; // 5MB limit
+  const filename = generateId() + '.' + ext;
+  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+  return 'uploads/' + filename;
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -31,7 +47,8 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
 };
 
 function serveStatic(url, res) {
@@ -79,15 +96,19 @@ const server = http.createServer(async (req, res) => {
   // API: POST /api/posts - create new post
   if (req.method === 'POST' && pathname === '/api/posts') {
     try {
-      const { name, content } = await readBody(req);
-      if (!name || !name.trim()) return jsonResponse(res, 400, { error: '请填写名字。' });
-      if (!content || !content.trim()) return jsonResponse(res, 400, { error: '内容不能为空。' });
+      const body = await readBody(req);
+      const name = (body.name || '').trim();
+      const content = (body.content || '').trim();
+      if (!name) return jsonResponse(res, 400, { error: '请填写名字。' });
+      if (!content) return jsonResponse(res, 400, { error: '内容不能为空。' });
 
       const posts = loadPosts();
+      const imageUrl = saveImage(body.image);
       const newPost = {
         id: generateId(),
-        name: name.trim(),
-        content: content.trim(),
+        name,
+        content,
+        image: imageUrl,
         createdAt: new Date().toISOString(),
         replies: [],
         likes: 0
@@ -104,19 +125,23 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply$/)) {
     const postId = pathname.split('/')[3];
     try {
-      const { name, content } = await readBody(req);
-      if (!name || !name.trim()) return jsonResponse(res, 400, { error: '请填写名字。' });
-      if (!content || !content.trim()) return jsonResponse(res, 400, { error: '回复内容不能为空。' });
+      const body = await readBody(req);
+      const name = (body.name || '').trim();
+      const content = (body.content || '').trim();
+      if (!name) return jsonResponse(res, 400, { error: '请填写名字。' });
+      if (!content) return jsonResponse(res, 400, { error: '回复内容不能为空。' });
 
       const posts = loadPosts();
       const post = posts.find(p => p.id === postId);
       if (!post) return jsonResponse(res, 404, { error: '帖子不存在。' });
 
       if (!post.replies) post.replies = [];
+      const imageUrl = saveImage(body.image);
       const reply = {
         id: generateId(),
-        name: name.trim(),
-        content: content.trim(),
+        name,
+        content,
+        image: imageUrl,
         createdAt: new Date().toISOString(),
         likes: 0
       };
@@ -128,7 +153,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // API: POST /api/posts/:id/like - like a post
+  // API: POST /api/posts/:id/like
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/like$/)) {
     const postId = pathname.split('/')[3];
     const posts = loadPosts();
@@ -139,7 +164,7 @@ const server = http.createServer(async (req, res) => {
     return jsonResponse(res, 200, { likes: post.likes });
   }
 
-  // API: POST /api/posts/:id/unlike - unlike a post
+  // API: POST /api/posts/:id/unlike
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/unlike$/)) {
     const postId = pathname.split('/')[3];
     const posts = loadPosts();
@@ -150,7 +175,7 @@ const server = http.createServer(async (req, res) => {
     return jsonResponse(res, 200, { likes: post.likes });
   }
 
-  // API: POST /api/posts/:id/reply/:replyId/like - like a reply
+  // API: POST /api/posts/:id/reply/:replyId/like
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply\/[^/]+\/like$/)) {
     const parts = pathname.split('/');
     const postId = parts[3], replyId = parts[5];
@@ -164,7 +189,7 @@ const server = http.createServer(async (req, res) => {
     return jsonResponse(res, 200, { likes: reply.likes });
   }
 
-  // API: POST /api/posts/:id/reply/:replyId/unlike - unlike a reply
+  // API: POST /api/posts/:id/reply/:replyId/unlike
   if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply\/[^/]+\/unlike$/)) {
     const parts = pathname.split('/');
     const postId = parts[3], replyId = parts[5];

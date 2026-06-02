@@ -10,6 +10,9 @@ const postCount = document.getElementById('postCount');
 const charCount = document.getElementById('charCount');
 const loading = document.getElementById('loadingIndicator');
 
+// ---- Image upload state ----
+let pendingPostImage = null; // { dataUrl, file }
+
 // ---- Helpers ----
 
 function getAvatarColor(name) {
@@ -73,6 +76,80 @@ function updatePostCount(posts) {
   postCount.textContent = count + ' 条帖子';
 }
 
+// ---- Image handling for post form ----
+
+function handlePostImageSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    alert('请选择图片文件');
+    e.target.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    alert('图片不能超过 5MB');
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    pendingPostImage = { dataUrl: ev.target.result, file };
+    document.getElementById('postImagePreview').innerHTML = `
+      <div class="image-preview-item">
+        <img src="${ev.target.result}" alt="preview" class="preview-thumb">
+        <button type="button" class="remove-image-btn" onclick="removePostImage()">✕</button>
+      </div>`;
+    document.getElementById('postImagePreview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePostImage() {
+  pendingPostImage = null;
+  document.getElementById('postImageInput').value = '';
+  document.getElementById('postImagePreview').style.display = 'none';
+  document.getElementById('postImagePreview').innerHTML = '';
+}
+
+// ---- Image handling for reply forms ----
+
+function handleReplyImageSelect(postId, e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    alert('请选择图片文件');
+    e.target.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    alert('图片不能超过 5MB');
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const preview = document.getElementById('replyImagePreview-' + postId);
+    preview.innerHTML = `
+      <div class="image-preview-item">
+        <img src="${ev.target.result}" alt="preview" class="preview-thumb">
+        <button type="button" class="remove-image-btn" onclick="removeReplyImage('${postId}')">✕</button>
+      </div>`;
+    preview.style.display = 'block';
+    // Store in a data attribute
+    preview.dataset.imageData = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeReplyImage(postId) {
+  const preview = document.getElementById('replyImagePreview-' + postId);
+  preview.style.display = 'none';
+  preview.innerHTML = '';
+  delete preview.dataset.imageData;
+  const input = document.getElementById('replyImageInput-' + postId);
+  if (input) input.value = '';
+}
+
 // ---- Likes (localStorage tracking) ----
 
 function isLiked(key) {
@@ -100,9 +177,7 @@ async function toggleLike(type, postId, replyId, btnEl, countEl) {
     setLiked(key, !liked);
     btnEl.classList.toggle('liked', !liked);
     countEl.textContent = data.likes || 0;
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) { /* ignore */ }
 }
 
 // ---- Reply handlers ----
@@ -121,6 +196,8 @@ async function submitReply(postId) {
   const nameInput = form.querySelector('.reply-name-input');
   const contentInput = form.querySelector('.reply-content-input');
   const btn = form.querySelector('.reply-submit-btn');
+  const preview = document.getElementById('replyImagePreview-' + postId);
+  const imageData = preview.dataset.imageData;
 
   const name = nameInput.value.trim();
   const content = contentInput.value.trim();
@@ -133,7 +210,7 @@ async function submitReply(postId) {
     const res = await fetch(`${API}/${postId}/reply`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content }),
+      body: JSON.stringify({ name, content, image: imageData || null }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -142,6 +219,7 @@ async function submitReply(postId) {
     }
     nameInput.value = '';
     contentInput.value = '';
+    removeReplyImage(postId);
     toggleReplyForm(postId);
     await loadPosts();
   } catch (err) {
@@ -166,6 +244,11 @@ function createPostElement(post) {
   div.className = 'post';
   div.dataset.id = post.id;
 
+  // Post image
+  const postImageHtml = post.image
+    ? `<div class="post-image"><img src="${escapeHtml(post.image)}" alt="post image" loading="lazy"></div>`
+    : '';
+
   // Build replies HTML
   let repliesHtml = '';
   if (replyCount > 0) {
@@ -175,6 +258,9 @@ function createPostElement(post) {
       const rInitials = reply.name.charAt(0).toUpperCase();
       const rLikes = reply.likes || 0;
       const rLiked = isLiked('reply:' + reply.id);
+      const rImg = reply.image
+        ? `<div class="reply-image"><img src="${escapeHtml(reply.image)}" alt="reply image" loading="lazy"></div>`
+        : '';
       repliesHtml += `
         <div class="reply">
           <div class="reply-header">
@@ -183,6 +269,7 @@ function createPostElement(post) {
             <span class="reply-time" title="${formatFullTime(reply.createdAt)}">${formatTime(reply.createdAt)}</span>
           </div>
           <div class="reply-content">${escapeHtml(reply.content)}</div>
+          ${rImg}
           <div style="display:flex;gap:0.3rem;margin-top:0.2rem">
             <button class="like-btn${rLiked ? ' liked' : ''}" onclick="toggleLike('reply','${post.id}','${reply.id}',this,this.querySelector('.like-count'))">
               <span class="heart-icon">${rLiked ? '♥' : '♡'}</span>
@@ -203,6 +290,7 @@ function createPostElement(post) {
       <span class="post-time" title="${formatFullTime(post.createdAt)}">${formatTime(post.createdAt)}</span>
     </div>
     <div class="post-content">${escapeHtml(post.content)}</div>
+    ${postImageHtml}
     ${repliesHtml}
     <div class="reply-form" id="replyForm-${post.id}">
       <div class="form-row">
@@ -210,6 +298,13 @@ function createPostElement(post) {
       </div>
       <div class="form-row">
         <textarea class="reply-content-input" placeholder="写下你的回复..." rows="2" maxlength="2000"></textarea>
+      </div>
+      <div class="form-row reply-image-upload-row">
+        <label class="image-upload-label" onclick="event.stopPropagation()">
+          <input type="file" accept="image/*" class="image-input" id="replyImageInput-${post.id}" onchange="handleReplyImageSelect('${post.id}',event)" hidden>
+          <span class="image-upload-btn">📷 添加图片</span>
+        </label>
+        <div class="image-preview" id="replyImagePreview-${post.id}" style="display:none"></div>
       </div>
       <div class="form-actions">
         <button class="reply-submit-btn" onclick="submitReply('${post.id}')">回复</button>
@@ -237,13 +332,8 @@ function createPostElement(post) {
     if (!confirm('确定要删除这条帖子吗？')) return;
     try {
       const res = await fetch(`${API}/${post.id}`, { method: 'DELETE' });
-      if (res.ok) {
-        div.remove();
-        updatePostCount();
-      }
-    } catch (err) {
-      console.error('Delete failed:', err);
-    }
+      if (res.ok) { div.remove(); updatePostCount(); }
+    } catch (err) { console.error('Delete failed:', err); }
   });
 
   return div;
@@ -296,7 +386,11 @@ form.addEventListener('submit', async (e) => {
     const res = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content }),
+      body: JSON.stringify({
+        name,
+        content,
+        image: pendingPostImage ? pendingPostImage.dataUrl : null
+      }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -305,6 +399,7 @@ form.addEventListener('submit', async (e) => {
     }
     nameInput.value = '';
     contentInput.value = '';
+    removePostImage();
     charCount.textContent = '0 / 5000';
     await loadPosts();
   } catch (err) {
@@ -325,5 +420,16 @@ contentInput.addEventListener('input', () => {
 });
 
 // ---- Init ----
+
+// Add image upload to post form (insert after textarea)
+const imageUploadRow = document.createElement('div');
+imageUploadRow.className = 'form-row';
+imageUploadRow.innerHTML = `
+  <label class="image-upload-label">
+    <input type="file" accept="image/*" id="postImageInput" onchange="handlePostImageSelect(event)" hidden>
+    <span class="image-upload-btn">📷 添加图片</span>
+  </label>
+  <div class="image-preview" id="postImagePreview" style="display:none"></div>`;
+contentInput.parentNode.insertAdjacentElement('afterend', imageUploadRow);
 
 loadPosts();
