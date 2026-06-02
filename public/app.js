@@ -1,6 +1,19 @@
 const API = '/api/posts';
 const AUTH_API = '/api/auth';
 
+const CATEGORIES = [
+  { id: 'sports', name: '运动健身', icon: '🏃' },
+  { id: 'entertainment', name: '影音文娱', icon: '🎬' },
+  { id: 'crafts', name: '手工创作', icon: '🎨' },
+  { id: 'reading', name: '读书写作', icon: '📚' },
+  { id: 'cooking', name: '美食烹饪', icon: '🍳' },
+  { id: 'travel', name: '户外旅行', icon: '✈️' },
+  { id: 'games', name: '棋牌桌游', icon: '🎲' },
+  { id: 'tech', name: '数码电竞', icon: '💻' },
+  { id: 'arts', name: '书画乐器', icon: '🎵' },
+  { id: 'pets', name: '养花萌宠', icon: '🐱' },
+];
+
 // ---- Auth State ----
 let currentUser = null;
 let authToken = null;
@@ -28,6 +41,7 @@ let _currentPhone = '';
 let _isRegistered = false;
 let _codeTimer = null;
 let _loginMode = 'code'; // 'code' or 'password'
+let _filterCategory = ''; // '' = all
 
 function switchLoginMode(mode) {
   _loginMode = mode;
@@ -293,6 +307,9 @@ function formatFullTime(iso) {
   const sec = String(d.getSeconds()).padStart(2, '0');
   return `${y}-${m}-${day} ${h}:${min}:${sec}`;
 }
+
+function getCatIcon(id) { const c = CATEGORIES.find(x => x.id === id); return c ? c.icon : ''; }
+function getCatName(id) { const c = CATEGORIES.find(x => x.id === id); return c ? c.name : ''; }
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -569,7 +586,7 @@ function createPostElement(post) {
     <div class="post-header">
       <div class="post-author">
         <span class="post-avatar" style="background:${avatarColor}">${escapeHtml(initials)}</span>
-        <span class="post-name">${escapeHtml(post.name)}</span>
+        <span class="post-name">${escapeHtml(post.name)}</span>${post.category ? `<span class="cat-tag">${getCatIcon(post.category)}${escapeHtml(getCatName(post.category))}</span>` : ""}
       </div>
       <span class="post-time" title="${formatFullTime(post.createdAt)}">${formatTime(post.createdAt)}</span>
     </div>
@@ -632,7 +649,8 @@ function createPostElement(post) {
 async function loadPosts() {
   setLoading(true);
   try {
-    const res = await fetch(API, { headers: apiHeaders() });
+    const url = _filterCategory ? API + '?category=' + encodeURIComponent(_filterCategory) : API;
+    const res = await fetch(url, { headers: apiHeaders() });
     if (!res.ok) throw new Error('Failed to load posts');
     const posts = await res.json();
     renderPosts(posts);
@@ -668,7 +686,7 @@ form.addEventListener('submit', async (e) => {
     const res = await fetch(API, {
       method: 'POST',
       headers: apiHeaders(),
-      body: JSON.stringify({ content, image: pendingPostImage ? pendingPostImage.dataUrl : null, video: pendingPostVideo ? pendingPostVideo.dataUrl : null }),
+      body: JSON.stringify({ content, category: _selectedCategory, image: pendingPostImage ? pendingPostImage.dataUrl : null, video: pendingPostVideo ? pendingPostVideo.dataUrl : null }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -713,6 +731,43 @@ if (uploadRow) {
     <div class="image-preview" id="postVideoPreview" style="display:none"></div>`;
 }
 
+
+// ---- Categories ----
+
+function renderCategoryBar() {
+  const bar = document.getElementById('categoryBar');
+  if (!bar) return;
+  let html = '<div class="category-scroll">';
+  html += '<button class="cat-btn' + (!_filterCategory ? ' active' : '') + '" onclick="filterCategory(\'\')">\U0001f4cb \u5168\u90e8</button>';
+  for (const c of CATEGORIES) {
+    html += '<button class="cat-btn' + (_filterCategory === c.id ? ' active' : '') + '" onclick="filterCategory(\'' + c.id + '\')">' + c.icon + ' ' + c.name + '</button>';
+  }
+  html += '</div>';
+  bar.innerHTML = html;
+}
+
+function renderCategoryPicker() {
+  const picker = document.getElementById('categoryPicker');
+  if (!picker) return;
+  let html = '';
+  for (const c of CATEGORIES) {
+    html += '<button class="cp-chip' + (_selectedCategory === c.id ? ' active' : '') + '" type="button" onclick="selectCategory(\'' + c.id + '\')">' + c.icon + ' ' + c.name + '</button>';
+  }
+  picker.innerHTML = html;
+}
+
+let _selectedCategory = '';
+
+function selectCategory(id) {
+  _selectedCategory = id;
+  renderCategoryPicker();
+}
+
+function filterCategory(id) {
+  _filterCategory = id;
+  renderCategoryBar();
+  loadPosts();
+}
 
 // ---- Profile ----
 

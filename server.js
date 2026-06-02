@@ -13,6 +13,20 @@ const { sendSMS } = require('./lib/sms');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // In-memory verification codes (phone -> { code, expiresAt })
+
+const CATEGORIES = [
+  { id: 'sports', name: '运动健身', icon: '🏃' },
+  { id: 'entertainment', name: '影音文娱', icon: '🎬' },
+  { id: 'crafts', name: '手工创作', icon: '🎨' },
+  { id: 'reading', name: '读书写作', icon: '📚' },
+  { id: 'cooking', name: '美食烹饪', icon: '🍳' },
+  { id: 'travel', name: '户外旅行', icon: '✈️' },
+  { id: 'games', name: '棋牌桌游', icon: '🎲' },
+  { id: 'tech', name: '数码电竞', icon: '💻' },
+  { id: 'arts', name: '书画乐器', icon: '🎵' },
+  { id: 'pets', name: '养花萌宠', icon: '🐱' },
+];
+
 const verificationCodes = {};
 setInterval(() => {
   const now = Date.now();
@@ -174,6 +188,11 @@ const server = http.createServer(async (req, res) => {
     return jsonResponse(res, 200, { registered: !!users.find(u => u.phone === phone) });
   }
 
+  // GET /api/categories
+  if (req.method === 'GET' && pathname === '/api/categories') {
+    return jsonResponse(res, 200, CATEGORIES);
+  }
+
   // POST /api/auth/register - register with phone + code + username + optional password
   if (req.method === 'POST' && pathname === '/api/auth/register') {
     try {
@@ -319,11 +338,13 @@ const server = http.createServer(async (req, res) => {
 
   // ======== FORUM API (all require auth) ========
 
-  // GET /api/posts
+  // GET /api/posts (optional ?category= filter)
   if (req.method === 'GET' && pathname === '/api/posts') {
     const user = authRequired(req, res);
     if (!user) return;
-    const posts = loadPosts();
+    let posts = loadPosts();
+    const cat = url.searchParams.get('category');
+    if (cat) posts = posts.filter(p => p.category === cat);
     posts.reverse();
     return jsonResponse(res, 200, posts);
   }

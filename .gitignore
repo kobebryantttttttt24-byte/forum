@@ -11,3 +11,4 @@ public/uploads/*
 # Auth data
 users.json
 sessions.json
+.env
