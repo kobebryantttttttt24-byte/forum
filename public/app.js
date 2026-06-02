@@ -1,8 +1,16 @@
 const API = '/api/posts';
+const AUTH_API = '/api/auth';
+
+// ---- Auth State ----
+let currentUser = null;
+let authToken = null;
 
 // DOM refs
+const authScreen = document.getElementById('authScreen');
+const forumApp = document.getElementById('forumApp');
+const headerUsername = document.getElementById('headerUsername');
+
 const form = document.getElementById('postForm');
-const nameInput = document.getElementById('postName');
 const contentInput = document.getElementById('postContent');
 const submitBtn = document.getElementById('submitBtn');
 const postsList = document.getElementById('postsList');
@@ -11,7 +19,163 @@ const charCount = document.getElementById('charCount');
 const loading = document.getElementById('loadingIndicator');
 
 // ---- Image upload state ----
-let pendingPostImage = null; // { dataUrl, file }
+let pendingPostImage = null;
+
+// ---- Auth Functions ----
+
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('loginForm').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('registerForm').classList.toggle('hidden', tab !== 'register');
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('regError').textContent = '';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const phone = document.getElementById('loginPhone').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errorEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+
+  if (!/^1\d{10}$/.test(phone)) { errorEl.textContent = '请输入正确的11位手机号。'; return; }
+  if (!password) { errorEl.textContent = '请输入密码。'; return; }
+
+  btn.disabled = true;
+  btn.textContent = '登录中...';
+  errorEl.textContent = '';
+
+  try {
+    const res = await fetch(`${AUTH_API}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { errorEl.textContent = data.error; return; }
+    onAuthSuccess(data.token, data.user);
+  } catch (err) {
+    errorEl.textContent = '网络错误，请重试。';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登录';
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const phone = document.getElementById('regPhone').value.trim();
+  const username = document.getElementById('regUsername').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const confirm = document.getElementById('regConfirm').value;
+  const errorEl = document.getElementById('regError');
+  const btn = document.getElementById('regBtn');
+
+  if (!/^1\d{10}$/.test(phone)) { errorEl.textContent = '请输入正确的11位手机号。'; return; }
+  if (!username || username.length > 16) { errorEl.textContent = '用户名需1-16个字符。'; return; }
+  if (password.length < 4) { errorEl.textContent = '密码至少4位。'; return; }
+  if (password !== confirm) { errorEl.textContent = '两次密码不一致。'; return; }
+
+  btn.disabled = true;
+  btn.textContent = '注册中...';
+  errorEl.textContent = '';
+
+  try {
+    const res = await fetch(`${AUTH_API}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { errorEl.textContent = data.error; return; }
+    onAuthSuccess(data.token, data.user);
+  } catch (err) {
+    errorEl.textContent = '网络错误，请重试。';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '注册';
+  }
+}
+
+function onAuthSuccess(token, user) {
+  authToken = token;
+  currentUser = user;
+  localStorage.setItem('forum_token', token);
+  localStorage.setItem('forum_user', JSON.stringify(user));
+  showForum();
+}
+
+async function handleLogout() {
+  if (authToken) {
+    try {
+      await fetch(`${AUTH_API}/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+    } catch (e) { /* ignore */ }
+  }
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('forum_token');
+  localStorage.removeItem('forum_user');
+  showAuth();
+}
+
+async function checkAuth() {
+  const token = localStorage.getItem('forum_token');
+  const cached = localStorage.getItem('forum_user');
+  if (!token) { showAuth(); return; }
+
+  try {
+    const res = await fetch(`${AUTH_API}/me`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { localStorage.removeItem('forum_token'); localStorage.removeItem('forum_user'); showAuth(); return; }
+    const user = await res.json();
+    authToken = token;
+    currentUser = user;
+    showForum();
+  } catch (err) {
+    // Offline? Use cached user
+    if (cached) {
+      authToken = token;
+      currentUser = JSON.parse(cached);
+      showForum();
+    } else {
+      showAuth();
+    }
+  }
+}
+
+function showAuth() {
+  if (authScreen) authScreen.style.display = 'flex';
+  if (forumApp) forumApp.style.display = 'none';
+  // Clear forms
+  document.getElementById('loginPhone').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('regPhone').value = '';
+  document.getElementById('regUsername').value = '';
+  document.getElementById('regPassword').value = '';
+  document.getElementById('regConfirm').value = '';
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('regError').textContent = '';
+  switchAuthTab('login');
+}
+
+function showForum() {
+  if (authScreen) authScreen.style.display = 'none';
+  if (forumApp) forumApp.style.display = 'block';
+  if (headerUsername) headerUsername.textContent = currentUser ? currentUser.username : '';
+}
+
+// ---- Auth helper for API calls ----
+
+function apiHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${authToken}`
+  };
+}
 
 // ---- Helpers ----
 
@@ -20,8 +184,7 @@ function getAvatarColor(name) {
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const hue = Math.abs(hash % 360);
-  return `hsl(${hue}, 48%, 55%)`;
+  return `hsl(${Math.abs(hash % 360)}, 48%, 55%)`;
 }
 
 function formatTime(iso) {
@@ -60,40 +223,32 @@ function escapeHtml(text) {
 }
 
 function setLoading(state) {
-  loading.style.display = state ? 'block' : 'none';
+  if (loading) loading.style.display = state ? 'block' : 'none';
 }
 
 function showEmpty() {
-  postsList.innerHTML = '<div class="empty-state"><p>还没有帖子</p><p>成为第一个发言的人吧 ✨</p></div>';
+  if (postsList) postsList.innerHTML = '<div class="empty-state"><p>还没有帖子</p><p>成为第一个发言的人吧 ✨</p></div>';
 }
 
 function showError(msg) {
-  postsList.innerHTML = `<div class="error-state">${escapeHtml(msg)}</div>`;
+  if (postsList) postsList.innerHTML = `<div class="error-state">${escapeHtml(msg)}</div>`;
 }
 
 function updatePostCount(posts) {
   const count = posts ? posts.length : document.querySelectorAll('.post').length;
-  postCount.textContent = count + ' 条帖子';
+  if (postCount) postCount.textContent = count + ' 条帖子';
 }
 
-// ---- Image handling for post form ----
+// ---- Image upload ----
 
 function handlePostImageSelect(e) {
   const file = e.target.files[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    alert('请选择图片文件');
-    e.target.value = '';
-    return;
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    alert('图片不能超过 5MB');
-    e.target.value = '';
-    return;
-  }
+  if (!file.type.startsWith('image/')) { alert('请选择图片文件'); e.target.value = ''; return; }
+  if (file.size > 5 * 1024 * 1024) { alert('图片不能超过 5MB'); e.target.value = ''; return; }
   const reader = new FileReader();
   reader.onload = function(ev) {
-    pendingPostImage = { dataUrl: ev.target.result, file };
+    pendingPostImage = { dataUrl: ev.target.result };
     document.getElementById('postImagePreview').innerHTML = `
       <div class="image-preview-item">
         <img src="${ev.target.result}" alt="preview" class="preview-thumb">
@@ -106,36 +261,26 @@ function handlePostImageSelect(e) {
 
 function removePostImage() {
   pendingPostImage = null;
-  document.getElementById('postImageInput').value = '';
-  document.getElementById('postImagePreview').style.display = 'none';
-  document.getElementById('postImagePreview').innerHTML = '';
+  const input = document.getElementById('postImageInput');
+  if (input) input.value = '';
+  const preview = document.getElementById('postImagePreview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
 }
-
-// ---- Image handling for reply forms ----
 
 function handleReplyImageSelect(postId, e) {
   const file = e.target.files[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    alert('请选择图片文件');
-    e.target.value = '';
-    return;
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    alert('图片不能超过 5MB');
-    e.target.value = '';
-    return;
-  }
+  if (!file.type.startsWith('image/')) { alert('请选择图片文件'); e.target.value = ''; return; }
+  if (file.size > 5 * 1024 * 1024) { alert('图片不能超过 5MB'); e.target.value = ''; return; }
   const reader = new FileReader();
   reader.onload = function(ev) {
     const preview = document.getElementById('replyImagePreview-' + postId);
-    preview.innerHTML = `
-      <div class="image-preview-item">
-        <img src="${ev.target.result}" alt="preview" class="preview-thumb">
-        <button type="button" class="remove-image-btn" onclick="removeReplyImage('${postId}')">✕</button>
-      </div>`;
+    if (!preview) return;
+    preview.innerHTML = `<div class="image-preview-item">
+      <img src="${ev.target.result}" alt="preview" class="preview-thumb">
+      <button type="button" class="remove-image-btn" onclick="removeReplyImage('${postId}')">✕</button>
+    </div>`;
     preview.style.display = 'block';
-    // Store in a data attribute
     preview.dataset.imageData = ev.target.result;
   };
   reader.readAsDataURL(file);
@@ -143,14 +288,12 @@ function handleReplyImageSelect(postId, e) {
 
 function removeReplyImage(postId) {
   const preview = document.getElementById('replyImagePreview-' + postId);
-  preview.style.display = 'none';
-  preview.innerHTML = '';
-  delete preview.dataset.imageData;
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; delete preview.dataset.imageData; }
   const input = document.getElementById('replyImageInput-' + postId);
   if (input) input.value = '';
 }
 
-// ---- Likes (localStorage tracking) ----
+// ---- Likes ----
 
 function isLiked(key) {
   const liked = JSON.parse(localStorage.getItem('forum_liked') || '{}');
@@ -169,9 +312,8 @@ async function toggleLike(type, postId, replyId, btnEl, countEl) {
   const url = replyId
     ? `${API}/${postId}/reply/${replyId}/${liked ? 'unlike' : 'like'}`
     : `${API}/${postId}/${liked ? 'unlike' : 'like'}`;
-
   try {
-    const res = await fetch(url, { method: 'POST' });
+    const res = await fetch(url, { method: 'POST', headers: apiHeaders() });
     if (!res.ok) return;
     const data = await res.json();
     setLiked(key, !liked);
@@ -187,21 +329,20 @@ function toggleReplyForm(postId) {
   if (!form) return;
   form.classList.toggle('visible');
   if (form.classList.contains('visible')) {
-    form.querySelector('.reply-name-input').focus();
+    const name = form.querySelector('.reply-name-input');
+    if (name) name.focus();
   }
 }
 
 async function submitReply(postId) {
   const form = document.getElementById('replyForm-' + postId);
-  const nameInput = form.querySelector('.reply-name-input');
   const contentInput = form.querySelector('.reply-content-input');
   const btn = form.querySelector('.reply-submit-btn');
   const preview = document.getElementById('replyImagePreview-' + postId);
-  const imageData = preview.dataset.imageData;
+  const imageData = preview ? preview.dataset.imageData : null;
 
-  const name = nameInput.value.trim();
   const content = contentInput.value.trim();
-  if (!name || !content) return;
+  if (!content) return;
 
   btn.disabled = true;
   btn.textContent = '发送中...';
@@ -209,15 +350,14 @@ async function submitReply(postId) {
   try {
     const res = await fetch(`${API}/${postId}/reply`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content, image: imageData || null }),
+      headers: apiHeaders(),
+      body: JSON.stringify({ content, image: imageData || null }),
     });
     if (!res.ok) {
       const err = await res.json();
       alert(err.error || '回复失败');
       return;
     }
-    nameInput.value = '';
     contentInput.value = '';
     removeReplyImage(postId);
     toggleReplyForm(postId);
@@ -244,12 +384,10 @@ function createPostElement(post) {
   div.className = 'post';
   div.dataset.id = post.id;
 
-  // Post image
   const postImageHtml = post.image
     ? `<div class="post-image"><img src="${escapeHtml(post.image)}" alt="post image" loading="lazy"></div>`
     : '';
 
-  // Build replies HTML
   let repliesHtml = '';
   if (replyCount > 0) {
     repliesHtml = '<div class="replies-section">';
@@ -294,9 +432,6 @@ function createPostElement(post) {
     ${repliesHtml}
     <div class="reply-form" id="replyForm-${post.id}">
       <div class="form-row">
-        <input class="reply-name-input" placeholder="你的名字" maxlength="30">
-      </div>
-      <div class="form-row">
         <textarea class="reply-content-input" placeholder="写下你的回复..." rows="2" maxlength="2000"></textarea>
       </div>
       <div class="form-row reply-image-upload-row">
@@ -326,12 +461,11 @@ function createPostElement(post) {
     </div>
   `;
 
-  // Delete handler
   const deleteBtn = div.querySelector('.delete-btn');
   deleteBtn.addEventListener('click', async () => {
     if (!confirm('确定要删除这条帖子吗？')) return;
     try {
-      const res = await fetch(`${API}/${post.id}`, { method: 'DELETE' });
+      const res = await fetch(`${API}/${post.id}`, { method: 'DELETE', headers: apiHeaders() });
       if (res.ok) { div.remove(); updatePostCount(); }
     } catch (err) { console.error('Delete failed:', err); }
   });
@@ -344,7 +478,7 @@ function createPostElement(post) {
 async function loadPosts() {
   setLoading(true);
   try {
-    const res = await fetch(API);
+    const res = await fetch(API, { headers: apiHeaders() });
     if (!res.ok) throw new Error('Failed to load posts');
     const posts = await res.json();
     renderPosts(posts);
@@ -357,16 +491,11 @@ async function loadPosts() {
 }
 
 function renderPosts(posts) {
+  if (!postsList) return;
   postsList.innerHTML = '';
-  if (posts.length === 0) {
-    showEmpty();
-    postCount.textContent = '0 条帖子';
-    return;
-  }
+  if (posts.length === 0) { showEmpty(); if (postCount) postCount.textContent = '0 条帖子'; return; }
   const fragment = document.createDocumentFragment();
-  for (const post of posts) {
-    fragment.appendChild(createPostElement(post));
-  }
+  for (const post of posts) fragment.appendChild(createPostElement(post));
   postsList.appendChild(fragment);
   updatePostCount(posts);
 }
@@ -375,9 +504,8 @@ function renderPosts(posts) {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const name = nameInput.value.trim();
   const content = contentInput.value.trim();
-  if (!name || !content) return;
+  if (!content) return;
 
   submitBtn.disabled = true;
   submitBtn.textContent = '发布中...';
@@ -385,19 +513,14 @@ form.addEventListener('submit', async (e) => {
   try {
     const res = await fetch(API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        content,
-        image: pendingPostImage ? pendingPostImage.dataUrl : null
-      }),
+      headers: apiHeaders(),
+      body: JSON.stringify({ content, image: pendingPostImage ? pendingPostImage.dataUrl : null }),
     });
     if (!res.ok) {
       const err = await res.json();
       alert(err.error || '发布失败');
       return;
     }
-    nameInput.value = '';
     contentInput.value = '';
     removePostImage();
     charCount.textContent = '0 / 5000';
@@ -411,25 +534,22 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// ---- Char Counter ----
-
 contentInput.addEventListener('input', () => {
   const len = contentInput.value.length;
   charCount.textContent = len + ' / 5000';
   charCount.style.color = len > 5000 ? '#e17055' : '#b0b8c1';
 });
 
-// ---- Init ----
+// ---- Init image upload row ----
+const uploadRow = document.getElementById('postImageUploadRow');
+if (uploadRow) {
+  uploadRow.innerHTML = `
+    <label class="image-upload-label">
+      <input type="file" accept="image/*" id="postImageInput" onchange="handlePostImageSelect(event)" hidden>
+      <span class="image-upload-btn">📷 添加图片</span>
+    </label>
+    <div class="image-preview" id="postImagePreview" style="display:none"></div>`;
+}
 
-// Add image upload to post form (insert after textarea)
-const imageUploadRow = document.createElement('div');
-imageUploadRow.className = 'form-row';
-imageUploadRow.innerHTML = `
-  <label class="image-upload-label">
-    <input type="file" accept="image/*" id="postImageInput" onchange="handlePostImageSelect(event)" hidden>
-    <span class="image-upload-btn">📷 添加图片</span>
-  </label>
-  <div class="image-preview" id="postImagePreview" style="display:none"></div>`;
-contentInput.parentNode.insertAdjacentElement('afterend', imageUploadRow);
-
-loadPosts();
+// ---- Start ----
+checkAuth();
