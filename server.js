@@ -20,6 +20,10 @@ function savePosts(posts) {
   fs.writeFileSync(POSTS_FILE, JSON.stringify(posts, null, 2), 'utf-8');
 }
 
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -72,32 +76,53 @@ const server = http.createServer(async (req, res) => {
     return jsonResponse(res, 200, posts);
   }
 
-  // API: POST /api/posts
+  // API: POST /api/posts - create new post
   if (req.method === 'POST' && pathname === '/api/posts') {
     try {
       const { name, content } = await readBody(req);
-
-      if (!name || !name.trim()) {
-        return jsonResponse(res, 400, { error: 'Please provide a name.' });
-      }
-      if (!content || !content.trim()) {
-        return jsonResponse(res, 400, { error: 'Post content cannot be empty.' });
-      }
+      if (!name || !name.trim()) return jsonResponse(res, 400, { error: '请填写名字。' });
+      if (!content || !content.trim()) return jsonResponse(res, 400, { error: '内容不能为空。' });
 
       const posts = loadPosts();
       const newPost = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        id: generateId(),
         name: name.trim(),
         content: content.trim(),
         createdAt: new Date().toISOString(),
+        replies: []
       };
-
       posts.push(newPost);
       savePosts(posts);
-
       return jsonResponse(res, 201, newPost);
     } catch (e) {
-      return jsonResponse(res, 400, { error: 'Invalid request body.' });
+      return jsonResponse(res, 400, { error: '请求格式错误。' });
+    }
+  }
+
+  // API: POST /api/posts/:id/reply - reply to a post
+  if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply$/)) {
+    const postId = pathname.split('/')[3];
+    try {
+      const { name, content } = await readBody(req);
+      if (!name || !name.trim()) return jsonResponse(res, 400, { error: '请填写名字。' });
+      if (!content || !content.trim()) return jsonResponse(res, 400, { error: '回复内容不能为空。' });
+
+      const posts = loadPosts();
+      const post = posts.find(p => p.id === postId);
+      if (!post) return jsonResponse(res, 404, { error: '帖子不存在。' });
+
+      if (!post.replies) post.replies = [];
+      const reply = {
+        id: generateId(),
+        name: name.trim(),
+        content: content.trim(),
+        createdAt: new Date().toISOString()
+      };
+      post.replies.push(reply);
+      savePosts(posts);
+      return jsonResponse(res, 201, reply);
+    } catch (e) {
+      return jsonResponse(res, 400, { error: '请求格式错误。' });
     }
   }
 
@@ -106,17 +131,14 @@ const server = http.createServer(async (req, res) => {
     const id = pathname.slice('/api/posts/'.length);
     const posts = loadPosts();
     const index = posts.findIndex(p => p.id === id);
-    if (index === -1) {
-      return jsonResponse(res, 404, { error: 'Post not found.' });
-    }
+    if (index === -1) return jsonResponse(res, 404, { error: '帖子不存在。' });
     posts.splice(index, 1);
     savePosts(posts);
     return jsonResponse(res, 200, { success: true });
   }
 
   // Static files
-  const filePath = pathname === '/' ? '/index.html' : pathname;
-  serveStatic(filePath, res);
+  serveStatic(pathname === '/' ? '/index.html' : pathname, res);
 });
 
 server.listen(PORT, '0.0.0.0', () => {

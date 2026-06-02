@@ -18,20 +18,19 @@ function getAvatarColor(name) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash % 360);
-  return `hsl(${hue}, 50%, 52%)`;
+  return `hsl(${hue}, 48%, 55%)`;
 }
 
 function formatTime(iso) {
   const d = new Date(iso);
   const now = new Date();
   const diff = Math.floor((now - d) / 1000);
-
-  if (diff < 60) return '刚刚';
+  if (diff < 5) return '刚刚';
+  if (diff < 60) return diff + ' 秒前';
   if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
   if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
   if (diff < 172800) return '昨天';
-  if (diff < 2592000) return Math.floor(diff / 86400) + ' 天前';
-
+  if (diff < 604800) return Math.floor(diff / 86400) + ' 天前';
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -40,42 +39,15 @@ function formatTime(iso) {
   return `${y}-${m}-${day} ${h}:${min}`;
 }
 
-function createPostElement(post) {
-  const initials = post.name.charAt(0).toUpperCase();
-  const avatarColor = getAvatarColor(post.name);
-
-  const div = document.createElement('div');
-  div.className = 'post';
-  div.dataset.id = post.id;
-  div.innerHTML = `
-    <div class="post-header">
-      <div class="post-author">
-        <span class="post-avatar" style="background:${avatarColor}">${initials}</span>
-        <span class="post-name">${escapeHtml(post.name)}</span>
-      </div>
-      <span class="post-time">${formatTime(post.createdAt)}</span>
-    </div>
-    <div class="post-content">${escapeHtml(post.content)}</div>
-    <div class="post-actions">
-      <button class="delete-btn" data-id="${post.id}">删除</button>
-    </div>
-  `;
-
-  const deleteBtn = div.querySelector('.delete-btn');
-  deleteBtn.addEventListener('click', async () => {
-    if (!confirm('确定要删除这条帖子吗？')) return;
-    try {
-      const res = await fetch(`${API}/${post.id}`, { method: 'DELETE' });
-      if (res.ok) {
-        div.remove();
-        updatePostCount();
-      }
-    } catch (err) {
-      console.error('Delete failed:', err);
-    }
-  });
-
-  return div;
+function formatFullTime(iso) {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const sec = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}:${sec}`;
 }
 
 function escapeHtml(text) {
@@ -96,9 +68,137 @@ function showError(msg) {
   postsList.innerHTML = `<div class="error-state">${escapeHtml(msg)}</div>`;
 }
 
-function updatePostCount() {
-  const items = postsList.querySelectorAll('.post');
-  postCount.textContent = items.length + ' 条帖子';
+function updatePostCount(posts) {
+  const count = posts ? posts.length : document.querySelectorAll('.post').length;
+  postCount.textContent = count + ' 条帖子';
+}
+
+// ---- Reply handlers ----
+
+function toggleReplyForm(postId) {
+  const form = document.getElementById('replyForm-' + postId);
+  if (!form) return;
+  form.classList.toggle('visible');
+  if (form.classList.contains('visible')) {
+    form.querySelector('.reply-name-input').focus();
+  }
+}
+
+async function submitReply(postId) {
+  const form = document.getElementById('replyForm-' + postId);
+  const nameInput = form.querySelector('.reply-name-input');
+  const contentInput = form.querySelector('.reply-content-input');
+  const btn = form.querySelector('.reply-submit-btn');
+
+  const name = nameInput.value.trim();
+  const content = contentInput.value.trim();
+  if (!name || !content) return;
+
+  btn.disabled = true;
+  btn.textContent = '发送中...';
+
+  try {
+    const res = await fetch(`${API}/${postId}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || '回复失败');
+      return;
+    }
+    nameInput.value = '';
+    contentInput.value = '';
+    toggleReplyForm(postId);
+    await loadPosts();
+  } catch (err) {
+    alert('回复失败，请重试');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '回复';
+  }
+}
+
+// ---- Create post element ----
+
+function createPostElement(post) {
+  const initials = post.name.charAt(0).toUpperCase();
+  const avatarColor = getAvatarColor(post.name);
+  const replies = post.replies || [];
+  const replyCount = replies.length;
+
+  const div = document.createElement('div');
+  div.className = 'post';
+  div.dataset.id = post.id;
+
+  // Build replies HTML
+  let repliesHtml = '';
+  if (replyCount > 0) {
+    repliesHtml = '<div class="replies-section">';
+    for (const reply of replies) {
+      const rColor = getAvatarColor(reply.name);
+      const rInitials = reply.name.charAt(0).toUpperCase();
+      repliesHtml += `
+        <div class="reply">
+          <div class="reply-header">
+            <span class="reply-avatar" style="background:${rColor}">${escapeHtml(rInitials)}</span>
+            <span class="reply-name">${escapeHtml(reply.name)}</span>
+            <span class="reply-time" title="${formatFullTime(reply.createdAt)}">${formatTime(reply.createdAt)}</span>
+          </div>
+          <div class="reply-content">${escapeHtml(reply.content)}</div>
+        </div>`;
+    }
+    repliesHtml += '</div>';
+  }
+
+  div.innerHTML = `
+    <div class="post-header">
+      <div class="post-author">
+        <span class="post-avatar" style="background:${avatarColor}">${escapeHtml(initials)}</span>
+        <span class="post-name">${escapeHtml(post.name)}</span>
+      </div>
+      <span class="post-time" title="${formatFullTime(post.createdAt)}">${formatTime(post.createdAt)}</span>
+    </div>
+    <div class="post-content">${escapeHtml(post.content)}</div>
+    ${repliesHtml}
+    <div class="reply-form" id="replyForm-${post.id}">
+      <div class="form-row">
+        <input class="reply-name-input" placeholder="你的名字" maxlength="30">
+      </div>
+      <div class="form-row">
+        <textarea class="reply-content-input" placeholder="写下你的回复..." rows="2" maxlength="2000"></textarea>
+      </div>
+      <div class="form-actions">
+        <button class="reply-submit-btn" onclick="submitReply('${post.id}')">回复</button>
+        <button class="reply-cancel-btn" onclick="toggleReplyForm('${post.id}')">取消</button>
+      </div>
+    </div>
+    <div class="post-meta">
+      <span class="reply-count">${replyCount > 0 ? replyCount + ' 条回复' : '暂无回复'}</span>
+      <div class="post-actions">
+        <button class="action-btn reply-btn" onclick="toggleReplyForm('${post.id}')">💬 回复</button>
+        <button class="action-btn delete-btn" data-id="${post.id}">🗑 删除</button>
+      </div>
+    </div>
+  `;
+
+  // Delete handler
+  const deleteBtn = div.querySelector('.delete-btn');
+  deleteBtn.addEventListener('click', async () => {
+    if (!confirm('确定要删除这条帖子吗？')) return;
+    try {
+      const res = await fetch(`${API}/${post.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        div.remove();
+        updatePostCount();
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  });
+
+  return div;
 }
 
 // ---- Load Posts ----
@@ -130,17 +230,15 @@ function renderPosts(posts) {
     fragment.appendChild(createPostElement(post));
   }
   postsList.appendChild(fragment);
-  updatePostCount();
+  updatePostCount(posts);
 }
 
 // ---- Create Post ----
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-
   const name = nameInput.value.trim();
   const content = contentInput.value.trim();
-
   if (!name || !content) return;
 
   submitBtn.disabled = true;
@@ -152,13 +250,11 @@ form.addEventListener('submit', async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, content }),
     });
-
     if (!res.ok) {
       const err = await res.json();
       alert(err.error || '发布失败');
       return;
     }
-
     nameInput.value = '';
     contentInput.value = '';
     charCount.textContent = '0 / 5000';
@@ -177,11 +273,7 @@ form.addEventListener('submit', async (e) => {
 contentInput.addEventListener('input', () => {
   const len = contentInput.value.length;
   charCount.textContent = len + ' / 5000';
-  if (len > 5000) {
-    charCount.style.color = '#e17055';
-  } else {
-    charCount.style.color = '#b2bec3';
-  }
+  charCount.style.color = len > 5000 ? '#e17055' : '#b0b8c1';
 });
 
 // ---- Init ----
