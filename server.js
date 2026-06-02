@@ -54,17 +54,19 @@ function generateToken() {
 
 // ---- Image saving ----
 
-function saveImage(imageDataUrl) {
-  if (!imageDataUrl || typeof imageDataUrl !== 'string') return null;
-  const match = imageDataUrl.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
+function saveFile(dataUrl, allowedMatch, maxBytes) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  const match = dataUrl.match(allowedMatch);
   if (!match) return null;
   const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
   const buffer = Buffer.from(match[2], 'base64');
-  if (buffer.length > 5 * 1024 * 1024) return null;
+  if (buffer.length > maxBytes) return null;
   const filename = generateId() + '.' + ext;
   fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
   return 'uploads/' + filename;
 }
+function saveImage(d) { return saveFile(d, /^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/, 5*1024*1024); }
+function saveVideo(d) { return saveFile(d, /^data:video\/(mp4|webm|ogg);base64,(.+)$/, 15*1024*1024); }
 
 // ---- Auth helpers ----
 
@@ -89,6 +91,9 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.ogv': 'video/ogg',
 };
 
 function serveStatic(url, res) {
@@ -312,6 +317,8 @@ const server = http.createServer(async (req, res) => {
         phone: user.phone,
         content,
         image: saveImage(body.image),
+        video: saveVideo(body.video),
+        video: saveVideo(body.video),
         createdAt: new Date().toISOString(),
         replies: [],
         likes: 0
@@ -345,6 +352,8 @@ const server = http.createServer(async (req, res) => {
         phone: user.phone,
         content,
         image: saveImage(body.image),
+        video: saveVideo(body.video),
+        video: saveVideo(body.video),
         createdAt: new Date().toISOString(),
         likes: 0
       };

@@ -20,6 +20,7 @@ const loading = document.getElementById('loadingIndicator');
 
 // ---- Image upload state ----
 let pendingPostImage = null;
+let pendingPostVideo = null;
 
 // ---- Auth Functions ----
 
@@ -304,6 +305,64 @@ function removePostImage() {
   if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
 }
 
+// ---- Video ----
+
+function handlePostVideoSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('video/')) { alert('请选择视频文件'); e.target.value = ''; return; }
+  if (file.size > 15 * 1024 * 1024) { alert('视频不能超过 15MB'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    pendingPostVideo = { dataUrl: ev.target.result };
+    document.getElementById('postVideoPreview').innerHTML = `
+      <div class="image-preview-item">
+        <video controls preload="metadata" class="preview-thumb">
+          <source src="${ev.target.result}">
+        </video>
+        <button type="button" class="remove-image-btn" onclick="removePostVideo()">✕</button>
+      </div>`;
+    document.getElementById('postVideoPreview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePostVideo() {
+  pendingPostVideo = null;
+  const input = document.getElementById('postVideoInput');
+  if (input) input.value = '';
+  const preview = document.getElementById('postVideoPreview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+}
+
+function handleReplyVideoSelect(postId, e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('video/')) { alert('请选择视频文件'); e.target.value = ''; return; }
+  if (file.size > 15 * 1024 * 1024) { alert('视频不能超过 15MB'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const preview = document.getElementById('replyVideoPreview-' + postId);
+    if (!preview) return;
+    preview.innerHTML = `<div class="image-preview-item">
+      <video controls preload="metadata" class="preview-thumb">
+        <source src="${ev.target.result}">
+      </video>
+      <button type="button" class="remove-image-btn" onclick="removeReplyVideo('${postId}')">✕</button>
+    </div>`;
+    preview.style.display = 'block';
+    preview.dataset.videoData = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeReplyVideo(postId) {
+  const preview = document.getElementById('replyVideoPreview-' + postId);
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; delete preview.dataset.videoData; }
+  const input = document.getElementById('replyVideoInput-' + postId);
+  if (input) input.value = '';
+}
+
 function handleReplyImageSelect(postId, e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -377,6 +436,8 @@ async function submitReply(postId) {
   const btn = form.querySelector('.reply-submit-btn');
   const preview = document.getElementById('replyImagePreview-' + postId);
   const imageData = preview ? preview.dataset.imageData : null;
+  const previewVid = document.getElementById('replyVideoPreview-' + postId);
+  const videoData = previewVid ? previewVid.dataset.videoData : null;
 
   const content = contentInput.value.trim();
   if (!content) return;
@@ -388,7 +449,7 @@ async function submitReply(postId) {
     const res = await fetch(`${API}/${postId}/reply`, {
       method: 'POST',
       headers: apiHeaders(),
-      body: JSON.stringify({ content, image: imageData || null }),
+      body: JSON.stringify({ content, image: imageData || null, video: videoData || null }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -397,6 +458,7 @@ async function submitReply(postId) {
     }
     contentInput.value = '';
     removeReplyImage(postId);
+    removeReplyVideo(postId);
     toggleReplyForm(postId);
     await loadPosts();
   } catch (err) {
@@ -424,6 +486,9 @@ function createPostElement(post) {
   const postImageHtml = post.image
     ? `<div class="post-image"><img src="${escapeHtml(post.image)}" alt="post image" loading="lazy"></div>`
     : '';
+  const postVideoHtml = post.video
+    ? `<div class="post-video"><video controls preload="metadata"><source src="${escapeHtml(post.video)}"></video></div>`
+    : '';
 
   let repliesHtml = '';
   if (replyCount > 0) {
@@ -436,6 +501,9 @@ function createPostElement(post) {
       const rImg = reply.image
         ? `<div class="reply-image"><img src="${escapeHtml(reply.image)}" alt="reply image" loading="lazy"></div>`
         : '';
+      const rVid = reply.video
+        ? `<div class="reply-video"><video controls preload="metadata"><source src="${escapeHtml(reply.video)}"></video></div>`
+        : '';
       repliesHtml += `
         <div class="reply">
           <div class="reply-header">
@@ -445,6 +513,7 @@ function createPostElement(post) {
           </div>
           <div class="reply-content">${escapeHtml(reply.content)}</div>
           ${rImg}
+          ${rVid}
           <div style="display:flex;gap:0.3rem;margin-top:0.2rem">
             <button class="like-btn${rLiked ? ' liked' : ''}" onclick="toggleLike('reply','${post.id}','${reply.id}',this,this.querySelector('.like-count'))">
               <span class="heart-icon">${rLiked ? '♥' : '♡'}</span>
@@ -466,17 +535,25 @@ function createPostElement(post) {
     </div>
     <div class="post-content">${escapeHtml(post.content)}</div>
     ${postImageHtml}
+    ${postVideoHtml}
     ${repliesHtml}
     <div class="reply-form" id="replyForm-${post.id}">
       <div class="form-row">
         <textarea class="reply-content-input" placeholder="写下你的回复..." rows="2" maxlength="2000"></textarea>
       </div>
-      <div class="form-row reply-image-upload-row">
-        <label class="image-upload-label" onclick="event.stopPropagation()">
-          <input type="file" accept="image/*" class="image-input" id="replyImageInput-${post.id}" onchange="handleReplyImageSelect('${post.id}',event)" hidden>
-          <span class="image-upload-btn">📷 添加图片</span>
-        </label>
+      <div class="form-row reply-media-row">
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+          <label class="image-upload-label" onclick="event.stopPropagation()">
+            <input type="file" accept="image/*" class="image-input" id="replyImageInput-${post.id}" onchange="handleReplyImageSelect('${post.id}',event)" hidden>
+            <span class="image-upload-btn">📷 图片</span>
+          </label>
+          <label class="image-upload-label" onclick="event.stopPropagation()">
+            <input type="file" accept="video/*" class="image-input" id="replyVideoInput-${post.id}" onchange="handleReplyVideoSelect('${post.id}',event)" hidden>
+            <span class="image-upload-btn">📹 视频</span>
+          </label>
+        </div>
         <div class="image-preview" id="replyImagePreview-${post.id}" style="display:none"></div>
+        <div class="image-preview" id="replyVideoPreview-${post.id}" style="display:none"></div>
       </div>
       <div class="form-actions">
         <button class="reply-submit-btn" onclick="submitReply('${post.id}')">回复</button>
@@ -551,7 +628,7 @@ form.addEventListener('submit', async (e) => {
     const res = await fetch(API, {
       method: 'POST',
       headers: apiHeaders(),
-      body: JSON.stringify({ content, image: pendingPostImage ? pendingPostImage.dataUrl : null }),
+      body: JSON.stringify({ content, image: pendingPostImage ? pendingPostImage.dataUrl : null, video: pendingPostVideo ? pendingPostVideo.dataUrl : null }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -560,6 +637,7 @@ form.addEventListener('submit', async (e) => {
     }
     contentInput.value = '';
     removePostImage();
+    removePostVideo();
     charCount.textContent = '0 / 5000';
     await loadPosts();
   } catch (err) {
@@ -581,11 +659,18 @@ contentInput.addEventListener('input', () => {
 const uploadRow = document.getElementById('postImageUploadRow');
 if (uploadRow) {
   uploadRow.innerHTML = `
-    <label class="image-upload-label">
-      <input type="file" accept="image/*" id="postImageInput" onchange="handlePostImageSelect(event)" hidden>
-      <span class="image-upload-btn">📷 添加图片</span>
-    </label>
-    <div class="image-preview" id="postImagePreview" style="display:none"></div>`;
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+      <label class="image-upload-label">
+        <input type="file" accept="image/*" id="postImageInput" onchange="handlePostImageSelect(event)" hidden>
+        <span class="image-upload-btn">📷 图片</span>
+      </label>
+      <label class="image-upload-label">
+        <input type="file" accept="video/*" id="postVideoInput" onchange="handlePostVideoSelect(event)" hidden>
+        <span class="image-upload-btn">📹 视频</span>
+      </label>
+    </div>
+    <div class="image-preview" id="postImagePreview" style="display:none"></div>
+    <div class="image-preview" id="postVideoPreview" style="display:none"></div>`;
 }
 
 
