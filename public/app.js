@@ -165,7 +165,7 @@ function showAuth() {
 function showForum() {
   if (authScreen) authScreen.style.display = 'none';
   if (forumApp) forumApp.style.display = 'block';
-  if (headerUsername) headerUsername.textContent = currentUser ? currentUser.username : '';
+  if (headerUsername) { headerUsername.textContent = currentUser ? currentUser.username : ''; headerUsername.style.cursor = 'pointer'; headerUsername.onclick = showProfile; }
 }
 
 // ---- Auth helper for API calls ----
@@ -549,6 +549,59 @@ if (uploadRow) {
       <span class="image-upload-btn">📷 添加图片</span>
     </label>
     <div class="image-preview" id="postImagePreview" style="display:none"></div>`;
+}
+
+
+// ---- Profile ----
+
+async function showProfile() {
+  const modal = document.getElementById('profileModal');
+  const content = document.getElementById('profileContent');
+  if (!modal || !content) return;
+  modal.style.display = 'flex';
+  content.innerHTML = '<div class="profile-loading">加载中...</div>';
+
+  try {
+    const res = await fetch('/api/auth/profile', { headers: apiHeaders() });
+    if (!res.ok) { content.innerHTML = '<div class="profile-error">加载失败</div>'; return; }
+    const data = await res.json();
+    renderProfile(content, data);
+  } catch (err) {
+    content.innerHTML = '<div class="profile-error">网络错误</div>';
+  }
+}
+
+function renderProfile(container, data) {
+  const initial = data.username.charAt(0).toUpperCase();
+  const color = getAvatarColor(data.username);
+  const joined = new Date(data.createdAt).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+  const phoneMasked = data.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+
+  container.innerHTML = `
+    <div class="profile-avatar" style="background:${color}">${escapeHtml(initial)}</div>
+    <div class="profile-name">${escapeHtml(data.username)}</div>
+    <div class="profile-phone">${escapeHtml(phoneMasked)}</div>
+    <div class="profile-joined">注册于 ${joined}</div>
+    <div class="profile-stats">
+      <div class="profile-stat">
+        <div class="profile-stat-num">${data.stats.postCount}</div>
+        <div class="profile-stat-label">帖子</div>
+      </div>
+      <div class="profile-stat">
+        <div class="profile-stat-num">${data.stats.replyCount}</div>
+        <div class="profile-stat-label">回复</div>
+      </div>
+      <div class="profile-stat">
+        <div class="profile-stat-num">${data.stats.totalLikes}</div>
+        <div class="profile-stat-label">获赞</div>
+      </div>
+    </div>`;
+}
+
+function closeProfile(e) {
+  if (e && e.target !== e.currentTarget) return;
+  const modal = document.getElementById('profileModal');
+  if (modal) modal.style.display = 'none';
 }
 
 // ---- Start ----

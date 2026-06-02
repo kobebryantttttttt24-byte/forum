@@ -105,5 +105,16 @@
   </div>
 
   <script src="/app.js"></script>
+
+  <!-- Profile Modal -->
+  <div id="profileModal" class="profile-overlay" style="display:none" onclick="closeProfile(event)">
+    <div class="profile-card" onclick="event.stopPropagation()">
+      <button class="profile-close" onclick="closeProfile()">✕</button>
+      <div id="profileContent">
+        <div class="profile-loading">加载中...</div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

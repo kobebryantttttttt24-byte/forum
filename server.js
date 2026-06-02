@@ -217,6 +217,36 @@ const server = http.createServer(async (req, res) => {
     return jsonResponse(res, 200, { phone: user.phone, username: user.username });
   }
 
+
+  // GET /api/auth/profile
+  if (req.method === 'GET' && pathname === '/api/auth/profile') {
+    const user = authRequired(req, res);
+    if (!user) return;
+
+    const posts = loadPosts();
+    const userPosts = posts.filter(p => p.phone === user.phone);
+    let replyCount = 0, totalLikes = 0;
+
+    for (const p of userPosts) {
+      totalLikes += (p.likes || 0);
+      for (const r of (p.replies || [])) {
+        if (r.phone === user.phone) { replyCount++; totalLikes += (r.likes || 0); }
+      }
+    }
+
+    return jsonResponse(res, 200, {
+      phone: user.phone,
+      username: user.username,
+      createdAt: user.createdAt,
+      stats: {
+        postCount: userPosts.length,
+        replyCount,
+        totalLikes
+      }
+    });
+  }
+
+
   // ======== FORUM API (all require auth) ========
 
   // GET /api/posts
