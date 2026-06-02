@@ -1,0 +1,9 @@
+{
+  "name": "simple-forum",
+  "version": "1.0.0",
+  "description": "A simple forum where anyone can post",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

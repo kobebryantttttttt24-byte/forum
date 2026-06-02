@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>共话 - 简单论坛</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <h1 class="site-title">共话</h1>
+      <p class="site-desc">一个自由的发言空间</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="new-post-section">
+      <div class="card form-card">
+        <h2 class="section-title">发布新帖</h2>
+        <form id="postForm">
+          <div class="form-row">
+            <input type="text" id="postName" placeholder="你的名字" maxlength="30" required>
+          </div>
+          <div class="form-row">
+            <textarea id="postContent" placeholder="说点什么..." rows="4" maxlength="5000" required></textarea>
+          </div>
+          <div class="form-row form-actions">
+            <button type="submit" id="submitBtn">发布</button>
+            <span id="charCount" class="char-count">0 / 5000</span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="posts-section">
+      <div class="posts-header">
+        <h2 class="section-title">全部帖子</h2>
+        <span id="postCount" class="post-count">0 条帖子</span>
+      </div>
+      <div id="postsList" class="posts-list">
+        <div class="loading" id="loadingIndicator">加载中...</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>共话 · 简单的论坛</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
