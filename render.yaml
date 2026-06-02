@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: forum
+    runtime: node
+    repo: https://github.com/kobebryantttttttt24-byte/forum
+    plan: free
+    buildCommand: ""
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 10000
