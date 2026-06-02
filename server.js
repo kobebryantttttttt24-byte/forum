@@ -89,7 +89,8 @@ const server = http.createServer(async (req, res) => {
         name: name.trim(),
         content: content.trim(),
         createdAt: new Date().toISOString(),
-        replies: []
+        replies: [],
+        likes: 0
       };
       posts.push(newPost);
       savePosts(posts);
@@ -116,7 +117,8 @@ const server = http.createServer(async (req, res) => {
         id: generateId(),
         name: name.trim(),
         content: content.trim(),
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        likes: 0
       };
       post.replies.push(reply);
       savePosts(posts);
@@ -124,6 +126,56 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       return jsonResponse(res, 400, { error: '请求格式错误。' });
     }
+  }
+
+  // API: POST /api/posts/:id/like - like a post
+  if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/like$/)) {
+    const postId = pathname.split('/')[3];
+    const posts = loadPosts();
+    const post = posts.find(p => p.id === postId);
+    if (!post) return jsonResponse(res, 404, { error: '帖子不存在。' });
+    post.likes = (post.likes || 0) + 1;
+    savePosts(posts);
+    return jsonResponse(res, 200, { likes: post.likes });
+  }
+
+  // API: POST /api/posts/:id/unlike - unlike a post
+  if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/unlike$/)) {
+    const postId = pathname.split('/')[3];
+    const posts = loadPosts();
+    const post = posts.find(p => p.id === postId);
+    if (!post) return jsonResponse(res, 404, { error: '帖子不存在。' });
+    post.likes = Math.max(0, (post.likes || 0) - 1);
+    savePosts(posts);
+    return jsonResponse(res, 200, { likes: post.likes });
+  }
+
+  // API: POST /api/posts/:id/reply/:replyId/like - like a reply
+  if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply\/[^/]+\/like$/)) {
+    const parts = pathname.split('/');
+    const postId = parts[3], replyId = parts[5];
+    const posts = loadPosts();
+    const post = posts.find(p => p.id === postId);
+    if (!post) return jsonResponse(res, 404, { error: '帖子不存在。' });
+    const reply = (post.replies || []).find(r => r.id === replyId);
+    if (!reply) return jsonResponse(res, 404, { error: '回复不存在。' });
+    reply.likes = (reply.likes || 0) + 1;
+    savePosts(posts);
+    return jsonResponse(res, 200, { likes: reply.likes });
+  }
+
+  // API: POST /api/posts/:id/reply/:replyId/unlike - unlike a reply
+  if (req.method === 'POST' && pathname.match(/^\/api\/posts\/[^/]+\/reply\/[^/]+\/unlike$/)) {
+    const parts = pathname.split('/');
+    const postId = parts[3], replyId = parts[5];
+    const posts = loadPosts();
+    const post = posts.find(p => p.id === postId);
+    if (!post) return jsonResponse(res, 404, { error: '帖子不存在。' });
+    const reply = (post.replies || []).find(r => r.id === replyId);
+    if (!reply) return jsonResponse(res, 404, { error: '回复不存在。' });
+    reply.likes = Math.max(0, (reply.likes || 0) - 1);
+    savePosts(posts);
+    return jsonResponse(res, 200, { likes: reply.likes });
   }
 
   // API: DELETE /api/posts/:id

@@ -25,7 +25,7 @@ function formatTime(iso) {
   const d = new Date(iso);
   const now = new Date();
   const diff = Math.floor((now - d) / 1000);
-  if (diff < 5) return '刚刚';
+  if (diff < 10) return '刚刚';
   if (diff < 60) return diff + ' 秒前';
   if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
   if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
@@ -71,6 +71,38 @@ function showError(msg) {
 function updatePostCount(posts) {
   const count = posts ? posts.length : document.querySelectorAll('.post').length;
   postCount.textContent = count + ' 条帖子';
+}
+
+// ---- Likes (localStorage tracking) ----
+
+function isLiked(key) {
+  const liked = JSON.parse(localStorage.getItem('forum_liked') || '{}');
+  return !!liked[key];
+}
+
+function setLiked(key, state) {
+  const liked = JSON.parse(localStorage.getItem('forum_liked') || '{}');
+  liked[key] = state;
+  localStorage.setItem('forum_liked', JSON.stringify(liked));
+}
+
+async function toggleLike(type, postId, replyId, btnEl, countEl) {
+  const key = replyId ? `reply:${replyId}` : `post:${postId}`;
+  const liked = isLiked(key);
+  const url = replyId
+    ? `${API}/${postId}/reply/${replyId}/${liked ? 'unlike' : 'like'}`
+    : `${API}/${postId}/${liked ? 'unlike' : 'like'}`;
+
+  try {
+    const res = await fetch(url, { method: 'POST' });
+    if (!res.ok) return;
+    const data = await res.json();
+    setLiked(key, !liked);
+    btnEl.classList.toggle('liked', !liked);
+    countEl.textContent = data.likes || 0;
+  } catch (e) {
+    // ignore
+  }
 }
 
 // ---- Reply handlers ----
@@ -127,6 +159,8 @@ function createPostElement(post) {
   const avatarColor = getAvatarColor(post.name);
   const replies = post.replies || [];
   const replyCount = replies.length;
+  const likes = post.likes || 0;
+  const postLiked = isLiked('post:' + post.id);
 
   const div = document.createElement('div');
   div.className = 'post';
@@ -139,6 +173,8 @@ function createPostElement(post) {
     for (const reply of replies) {
       const rColor = getAvatarColor(reply.name);
       const rInitials = reply.name.charAt(0).toUpperCase();
+      const rLikes = reply.likes || 0;
+      const rLiked = isLiked('reply:' + reply.id);
       repliesHtml += `
         <div class="reply">
           <div class="reply-header">
@@ -147,6 +183,12 @@ function createPostElement(post) {
             <span class="reply-time" title="${formatFullTime(reply.createdAt)}">${formatTime(reply.createdAt)}</span>
           </div>
           <div class="reply-content">${escapeHtml(reply.content)}</div>
+          <div style="display:flex;gap:0.3rem;margin-top:0.2rem">
+            <button class="like-btn${rLiked ? ' liked' : ''}" onclick="toggleLike('reply','${post.id}','${reply.id}',this,this.querySelector('.like-count'))">
+              <span class="heart-icon">${rLiked ? '♥' : '♡'}</span>
+              <span class="like-count">${rLikes}</span>
+            </button>
+          </div>
         </div>`;
     }
     repliesHtml += '</div>';
@@ -175,10 +217,16 @@ function createPostElement(post) {
       </div>
     </div>
     <div class="post-meta">
-      <span class="reply-count">${replyCount > 0 ? replyCount + ' 条回复' : '暂无回复'}</span>
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <button class="like-btn${postLiked ? ' liked' : ''}" onclick="toggleLike('post','${post.id}','',this,this.querySelector('.like-count'))">
+          <span class="heart-icon">${postLiked ? '♥' : '♡'}</span>
+          <span class="like-count">${likes}</span>
+        </button>
+        <span class="reply-count">${replyCount > 0 ? replyCount + ' 条回复' : '回复'}</span>
+      </div>
       <div class="post-actions">
-        <button class="action-btn reply-btn" onclick="toggleReplyForm('${post.id}')">💬 回复</button>
-        <button class="action-btn delete-btn" data-id="${post.id}">🗑 删除</button>
+        <button class="action-btn reply-btn" onclick="toggleReplyForm('${post.id}')">💬</button>
+        <button class="action-btn delete-btn" data-id="${post.id}">🗑</button>
       </div>
     </div>
   `;
