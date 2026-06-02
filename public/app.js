@@ -41,7 +41,8 @@ let _currentPhone = '';
 let _isRegistered = false;
 let _codeTimer = null;
 let _loginMode = 'code'; // 'code' or 'password'
-let _filterCategory = ''; // '' = all
+let _filterCategory = ''; // '' = show boards grid
+let _view = 'boards'; // 'boards' or 'board'
 
 function switchLoginMode(mode) {
   _loginMode = mode;
@@ -258,6 +259,7 @@ function showForum() {
   if (authScreen) authScreen.style.display = 'none';
   if (forumApp) forumApp.style.display = 'block';
   if (headerUsername) { headerUsername.textContent = currentUser ? currentUser.username : ''; headerUsername.style.cursor = 'pointer'; headerUsername.onclick = showProfile; }
+  renderBoards();
 }
 
 // ---- Auth helper for API calls ----
@@ -734,7 +736,88 @@ if (uploadRow) {
 
 // ---- Categories ----
 
-function renderCategoryBar() {
+function renderBoards() {
+  if (!postsList) return;
+  _view = 'boards';
+  _filterCategory = '';
+
+  // Count posts per category from loaded data (if available)
+  const catCounts = {};
+  // Try to use cached posts to count
+  const allPosts = document.querySelectorAll('.post');
+
+  let html = '<div class="boards-section-title">选择板块</div><div class="board-grid">';
+  for (const c of CATEGORIES) {
+    html += '<div class="board-card" onclick="enterBoard(\'' + c.id + '\')">';
+    html += '<div class="board-icon">' + c.icon + '</div>';
+    html += '<div class="board-name">' + c.name + '</div>';
+    html += '<div class="board-desc">' + getBoardDesc(c.id) + '</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+  postsList.innerHTML = html;
+  if (postCount) postCount.textContent = '';
+  document.querySelector('.new-post-section').style.display = 'none';
+  document.querySelector('.posts-header').style.display = 'none';
+  updateCategoryBar();
+}
+
+function getBoardDesc(id) {
+  const descs = {
+    sports: '运动健康，跑步健身',
+    entertainment: '电影音乐剧',
+    crafts: '手工DIY创意',
+    reading: '读书笔记交流',
+    cooking: '美食分享料理',
+    travel: '旅行风景攻略',
+    games: '棋牌游戏乐',
+    tech: '数码产品电竞',
+    arts: '书法绘画乐器',
+    pets: '花草宠物生活',
+  };
+  return descs[id] || '';
+}
+
+function enterBoard(id) {
+  _view = 'board';
+  _filterCategory = id;
+  _selectedCategory = id;
+  document.querySelector('.new-post-section').style.display = 'block';
+  document.querySelector('.posts-header').style.display = 'flex';
+  renderCategoryPicker();
+  updateCategoryBar();
+  loadPosts();
+}
+
+function updateCategoryBar() {
+  const bar = document.getElementById('categoryBar');
+  if (!bar) return;
+  if (_view === 'boards') {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'block';
+  let html = '<div class="category-scroll">';
+  html += '<button class="cat-btn" onclick="goHome()">🏠 首页</button>';
+  for (const c of CATEGORIES) {
+    html += '<button class="cat-btn' + (_filterCategory === c.id ? ' active' : '') + '" onclick="enterBoard(\'' + c.id + '\')">' + c.icon + ' ' + c.name + '</button>';
+  }
+  html += '</div>';
+  bar.innerHTML = html;
+}
+
+function goHome() {
+  _view = 'boards';
+  _filterCategory = '';
+  document.querySelector('.new-post-section').style.display = 'none';
+  document.querySelector('.posts-header').style.display = 'none';
+  updateCategoryBar();
+  renderBoards();
+}
+
+// ---- Old renderCategoryBar replaced by updateCategoryBar ----
+// (keeping original renderCategoryBar for compatibility)
+function renderCategoryBar() { updateCategoryBar(); } {
   const bar = document.getElementById('categoryBar');
   if (!bar) return;
   let html = '<div class="category-scroll">';
@@ -764,9 +847,8 @@ function selectCategory(id) {
 }
 
 function filterCategory(id) {
-  _filterCategory = id;
-  renderCategoryBar();
-  loadPosts();
+  if (!id) { goHome(); return; }
+  enterBoard(id);
 }
 
 // ---- Profile ----
